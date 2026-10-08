@@ -1,0 +1,72 @@
+// # Multi-Hash Digest Table Formatter
+//
+// Logline: Formats cryptographic digests into BSD, GNU, and tabular summary presentations.
+//
+// Setup: Terminal styling routines supporting ANSI colors and zero-byte delimiter options.
+//
+// Beats:
+//   1. Format standard GNU-style checksum rows (digest file).
+//   2. Format BSD-style tagged checksum rows (ALGO (file) = digest).
+//   3. Render comprehensive multi-digest summary blocks with byte measurements.
+//   4. Render checksum verification status indicators (OK / FAILED).
+
+import "core/hash_types.oo";
+
+fn ansi_green(color: Bool) -> String {
+    if !color { return ""; }
+    return "\x1b[32m";
+}
+
+fn ansi_red(color: Bool) -> String {
+    if !color { return ""; }
+    return "\x1b[31m";
+}
+
+fn ansi_cyan(color: Bool) -> String {
+    if !color { return ""; }
+    return "\x1b[36m";
+}
+
+fn ansi_bold(color: Bool) -> String {
+    if !color { return ""; }
+    return "\x1b[1m";
+}
+
+fn ansi_reset(color: Bool) -> String {
+    if !color { return ""; }
+    return "\x1b[0m";
+}
+
+pub fn format_gnu_line(digest: String, path: String, zero_delim: Bool) -> String {
+    let delim: String = if zero_delim { "\0" } else { "\n" };
+    return digest + "  " + path + delim;
+}
+
+pub fn format_bsd_tag(algo: String, path: String, digest: String, zero_delim: Bool) -> String {
+    let delim: String = if zero_delim { "\0" } else { "\n" };
+    let mut upper: String = "HASH";
+    if algo == "sha256" || algo == "SHA256" { upper = "SHA256"; }
+    else if algo == "blake3" || algo == "BLAKE3" { upper = "BLAKE3"; }
+    else if algo == "sha3_512" || algo == "sha3" || algo == "SHA3" { upper = "SHA3-512"; }
+    else { upper = algo; }
+    return upper + " (" + path + ") = " + digest + delim;
+}
+
+pub fn format_multi_table(res: MultiHashResult, color: Bool) -> String {
+    let b: String = ansi_bold(color);
+    let c: String = ansi_cyan(color);
+    let r: String = ansi_reset(color);
+
+    let mut out: String = "";
+    out = out + b + "=== " + c + res.input_name + r + b + " (" + to_string(res.bytes_count) + " bytes) ===" + r + "\n";
+    out = out + "  BLAKE3:   " + res.blake3 + "\n";
+    out = out + "  SHA-256:  " + res.sha256 + "\n";
+    out = out + "  SHA3-512: " + res.sha3_512 + "\n";
+    return out;
+}
+
+pub fn format_check_status(record: HashCheckRecord, color: Bool) -> String {
+    let status_color: String = if record.passed { ansi_green(color) } else { ansi_red(color) };
+    let reset_code: String = ansi_reset(color);
+    return record.file_path + ": " + status_color + record.status + reset_code;
+}

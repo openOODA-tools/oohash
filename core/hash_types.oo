@@ -1,0 +1,80 @@
+// # Multi-Algorithm Cryptographic Hash Types
+//
+// Logline: Data structures for simultaneous BLAKE3, SHA-256, and SHA3-512 cryptographic digests.
+//
+// Setup: Pure data models without external cryptographic library dependencies.
+//
+// Beats:
+//   1. Declare MultiHashResult container for simultaneous multi-digest outputs.
+//   2. Declare HashCheckRecord for manifest verification and integrity audits.
+//   3. Declare HashOptions for CLI operational modes and format styling.
+//   4. Provide pure constructor helpers for all hash data structures.
+
+pub type MultiHashResult = struct {
+    input_name: String,
+    blake3: String,
+    sha256: String,
+    sha3_512: String,
+    bytes_count: Int
+};
+
+pub type HashCheckRecord = struct {
+    file_path: String,
+    algo: String,
+    expected: String,
+    actual: String,
+    status: String,
+    passed: Bool
+};
+
+pub type HashOptions = struct {
+    selected_algo: String,
+    tag_style: Bool,
+    raw_digest: Bool,
+    check_mode: Bool,
+    zero_delim: Bool
+};
+
+pub fn make_multi_hash_result(
+    name: String,
+    b3: String,
+    s256: String,
+    s3_512: String,
+    bytes_cnt: Int
+) -> MultiHashResult {
+    return MultiHashResult {
+        input_name: name,
+        blake3: b3,
+        sha256: s256,
+        sha3_512: s3_512,
+        bytes_count: bytes_cnt
+    };
+}
+
+pub fn make_hash_check_record(
+    path: String,
+    algo: String,
+    expected: String,
+    actual: String,
+    status: String,
+    passed: Bool
+) -> HashCheckRecord {
+    return HashCheckRecord {
+        file_path: path,
+        algo: algo,
+        expected: expected,
+        actual: actual,
+        status: status,
+        passed: passed
+    };
+}
+
+pub fn default_hash_options() -> HashOptions {
+    return HashOptions {
+        selected_algo: "all",
+        tag_style: false,
+        raw_digest: false,
+        check_mode: false,
+        zero_delim: false
+    };
+}

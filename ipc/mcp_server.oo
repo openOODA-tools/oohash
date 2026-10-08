@@ -1,0 +1,126 @@
+// # Model Context Protocol (MCP) Stdio Server for oohash
+//
+// Logline: Streaming JSON-RPC 2.0 stdio server providing multi-algorithm cryptographic services.
+//
+// Setup: Demands FsReadCap for file hashing and stdio interaction without ambient authority.
+//
+// Beats:
+//   1. Process incoming JSON-RPC 2.0 requests over standard input.
+//   2. Dispatch initialize, tools/list, and tools/call methods.
+//   3. Implement hash_digest, hash_file, hash_verify, hash_benchmark, and hash_demo tools.
+//   4. Emit structured JSON-RPC responses bounded to capability security policies.
+
+import "core/hash_types.oo";
+import "core/multi_hash.oo";
+import "render/render_json.oo";
+import "render/render_demo.oo";
+import "ipc/json_field.oo";
+
+pub fn run_mcp_server(fs: &FsReadCap) {
+    let mut running: Bool = true;
+    while running {
+        let line_res: Result[String, String] = oo_read_stdin_chunk(fs, 8192);
+        if !line_res.is_ok() {
+            running = false;
+        } else {
+            let line: String = match line_res { Ok(s) => s, Err(_) => "" };
+            let trimmed: String = str_trim(line);
+            if chars_len(trimmed) == 0 {
+                running = false;
+            } else {
+                let id: String = json_get_field(trimmed, "id");
+                let method: String = json_get_string(trimmed, "method");
+
+                if method == "initialize" {
+                    let resp: String = "{\"jsonrpc\":\"2.0\",\"id\":" + id +
+                        ",\"result\":{\"protocolVersion\":\"2024-11-05\"," +
+                        "\"serverInfo\":{\"name\":\"oohash\",\"version\":\"0.2.0\"}," +
+                        "\"capabilities\":{\"tools\":{}}}}";
+                    println(resp);
+                } else if method == "notifications/initialized" {
+                    // ack
+                } else if method == "tools/list" {
+                    let t1: String = "{\"name\":\"hash_digest\",\"description\":\"Compute simultaneous BLAKE3, SHA-256, and SHA3-512 cryptographic digests for text content\"," +
+                        "\"inputSchema\":{\"type\":\"object\",\"properties\":{\"text\":{\"type\":\"string\"},\"algo\":{\"type\":\"string\"}},\"required\":[\"text\"]}}";
+                    let t2: String = "{\"name\":\"hash_file\",\"description\":\"Compute simultaneous cryptographic digests for a local file under FsReadCap\"," +
+                        "\"inputSchema\":{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"},\"algo\":{\"type\":\"string\"}},\"required\":[\"path\"]}}";
+                    let t3: String = "{\"name\":\"hash_verify\",\"description\":\"Verify file or text against an expected cryptographic digest\"," +
+                        "\"inputSchema\":{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"},\"text\":{\"type\":\"string\"},\"expected\":{\"type\":\"string\"},\"algo\":{\"type\":\"string\"}},\"required\":[\"expected\"]}}";
+                    let t4: String = "{\"name\":\"hash_benchmark\",\"description\":\"Query multi-hash cryptographic algorithm specifications and parameters\"," +
+                        "\"inputSchema\":{\"type\":\"object\",\"properties\":{}}}";
+                    let t5: String = "{\"name\":\"hash_demo\",\"description\":\"Run interactive multi-algorithm cryptographic showcase\"," +
+                        "\"inputSchema\":{\"type\":\"object\",\"properties\":{}}}";
+                    let resp: String = "{\"jsonrpc\":\"2.0\",\"id\":" + id +
+                        ",\"result\":{\"tools\":[" + t1 + "," + t2 + "," + t3 + "," + t4 + "," + t5 + "]}}";
+                    println(resp);
+                } else if method == "tools/call" {
+                    let params: String = json_get_field(trimmed, "params");
+                    let tool_name: String = json_get_string(params, "name");
+                    let args: String = json_get_field(params, "arguments");
+
+                    if tool_name == "hash_digest" {
+                        let text: String = json_get_string(args, "text");
+                        let res: MultiHashResult = compute_multi_hash("input", text);
+                        let j: String = hash_result_to_json(res);
+                        let resp: String = "{\"jsonrpc\":\"2.0\",\"id\":" + id +
+                            ",\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"" + json_escape(j) + "\"}]}}";
+                        println(resp);
+                    } else if tool_name == "hash_file" {
+                        let path: String = json_get_string(args, "path");
+                        let f_res: Result[MultiHashResult, String] = compute_file_multi_hash(fs, path);
+                        let j: String = match f_res {
+                            Ok(res) => hash_result_to_json(res),
+                            Err(e) => "{\"error\":\"" + json_escape(e) + "\"}"
+                        };
+                        let resp: String = "{\"jsonrpc\":\"2.0\",\"id\":" + id +
+                            ",\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"" + json_escape(j) + "\"}]}}";
+                        println(resp);
+                    } else if tool_name == "hash_verify" {
+                        let path: String = json_get_string(args, "path");
+                        let text: String = json_get_string(args, "text");
+                        let expected: String = json_get_string(args, "expected");
+                        let mut algo: String = json_get_string(args, "algo");
+                        if chars_len(algo) == 0 {
+                            if chars_len(expected) == 64 { algo = "sha256"; }
+                            else if chars_len(expected) == 128 { algo = "sha3_512"; }
+                            else { algo = "blake3"; }
+                        }
+                        let rec: HashCheckRecord = make_hash_check_record(if chars_len(path) > 0 { path } else { "input" }, algo, expected, "", "PENDING", false);
+                        let mut multi_res: MultiHashResult = compute_multi_hash("input", text);
+                        if chars_len(path) > 0 {
+                            let f_res: Result[MultiHashResult, String] = compute_file_multi_hash(fs, path);
+                            if f_res.is_ok() {
+                                multi_res = match f_res { Ok(r) => r, Err(_) => multi_res };
+                            }
+                        }
+                        let verified: HashCheckRecord = verify_hash_record(rec, multi_res);
+                        let j: String = check_record_to_json(verified);
+                        let resp: String = "{\"jsonrpc\":\"2.0\",\"id\":" + id +
+                            ",\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"" + json_escape(j) + "\"}]}}";
+                        println(resp);
+                    } else if tool_name == "hash_benchmark" {
+                        let j: String = "{\"algorithms\":[{\"name\":\"BLAKE3\",\"digest_bits\":256,\"rounds\":7,\"type\":\"tree\"}," +
+                            "{\"name\":\"SHA-256\",\"digest_bits\":256,\"rounds\":64,\"type\":\"merkle-damgard\"}," +
+                            "{\"name\":\"SHA3-512\",\"digest_bits\":512,\"rounds\":24,\"type\":\"keccak-sponge\"}]}";
+                        let resp: String = "{\"jsonrpc\":\"2.0\",\"id\":" + id +
+                            ",\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"" + json_escape(j) + "\"}]}}";
+                        println(resp);
+                    } else if tool_name == "hash_demo" {
+                        let demo_text: String = run_hash_demo(false);
+                        let resp: String = "{\"jsonrpc\":\"2.0\",\"id\":" + id +
+                            ",\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"" + json_escape(demo_text) + "\"}]}}";
+                        println(resp);
+                    } else {
+                        let resp: String = "{\"jsonrpc\":\"2.0\",\"id\":" + id +
+                            ",\"error\":{\"code\":-32601,\"message\":\"Method not found\"}}";
+                        println(resp);
+                    }
+                } else {
+                    let resp: String = "{\"jsonrpc\":\"2.0\",\"id\":" + id +
+                        ",\"error\":{\"code\":-32601,\"message\":\"Method not found\"}}";
+                    println(resp);
+                }
+            }
+        }
+    }
+}

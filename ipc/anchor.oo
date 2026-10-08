@@ -1,0 +1,43 @@
+// # IPC Subsystem Verification Anchor
+//
+// Logline: Automated self-tests for CLI option parsing and JSON payload decoding.
+//
+// Setup: Exercises argument parsing and JSON string extraction functions.
+//
+// Beats:
+//   1. Verify CLI argument parsing for standard algorithm flags.
+//   2. Verify CLI argument parsing for check manifest and formatting modes.
+//   3. Verify JSON field parser string extraction.
+//   4. Verify CLI usage documentation generation.
+
+import "ipc/json_field.oo";
+import "ipc/cli_options.oo";
+
+pub fn verify_ipc() -> Bool {
+    let mut args: List[String] = list_new();
+    args = list_push(args, "-a");
+    args = list_push(args, "sha256");
+    args = list_push(args, "--tag");
+    args = list_push(args, "sample.txt");
+
+    let opts: CliParsedOptions = parse_cli_args(args);
+    if opts.algorithm != "sha256" || !opts.tag_style {
+        return false;
+    }
+    if list_len(opts.files) != 1 || list_get(opts.files, 0) != "sample.txt" {
+        return false;
+    }
+
+    let json: String = "{\"method\":\"tools/call\",\"params\":{\"name\":\"hash_digest\"}}";
+    let method: String = json_get_string(json, "method");
+    if method != "tools/call" {
+        return false;
+    }
+
+    let help: String = render_cli_help();
+    if chars_len(help) < 50 {
+        return false;
+    }
+
+    return true;
+}

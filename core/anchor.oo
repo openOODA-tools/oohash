@@ -1,0 +1,57 @@
+// # Core Subsystem Verification Anchor
+//
+// Logline: Automated self-tests for multi-algorithm cryptographic hashing engines.
+//
+// Setup: Exercises BLAKE3, SHA-256, and SHA3-512 with standard test vectors.
+//
+// Beats:
+//   1. Verify NIST FIPS 180-4 SHA-256 known answer vector on "abc".
+//   2. Verify NIST FIPS 202 SHA3-512 known answer vector on "abc".
+//   3. Verify simultaneous multi-hash evaluation container and byte counting.
+//   4. Verify checksum manifest parsing and integrity verification records.
+
+import "core/hash_types.oo";
+import "core/blake3_engine.oo";
+import "core/sha256_engine.oo";
+import "core/sha3_engine.oo";
+import "core/multi_hash.oo";
+
+pub fn verify_core() -> Bool {
+    let s256: String = sha256_hash_string("abc");
+    if s256 != "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad" {
+        return false;
+    }
+
+    let s3: String = sha3_512_hash_string("abc");
+    if s3 != "b751850b1a57168a5693cd924b6b096e08f621827444f70d884f5d0240d2712e10e116e9192af3c91a7ec57647e3934057340b4cf408d5a56592f8274eec53f0" {
+        return false;
+    }
+
+    let b3: String = blake3_hash_string("abc");
+    if chars_len(b3) != 64 {
+        return false;
+    }
+
+    let multi: MultiHashResult = compute_multi_hash("test.txt", "abc");
+    if multi.bytes_count != 3 {
+        return false;
+    }
+    if multi.sha256 != s256 {
+        return false;
+    }
+    if multi.sha3_512 != s3 {
+        return false;
+    }
+
+    let check_line: String = s256 + "  test.txt";
+    let rec: HashCheckRecord = parse_check_line(check_line);
+    if rec.file_path != "test.txt" || rec.algo != "sha256" {
+        return false;
+    }
+    let verified: HashCheckRecord = verify_hash_record(rec, multi);
+    if !verified.passed || verified.status != "OK" {
+        return false;
+    }
+
+    return true;
+}

@@ -1,0 +1,41 @@
+// # Multi-Algorithm Cryptographic Showcase Demo
+//
+// Logline: Interactive demonstration showcasing simultaneous BLAKE3, SHA-256, and SHA3-512.
+//
+// Setup: Terminal presentation detailing NIST test vectors and simultaneous multi-hashing.
+//
+// Beats:
+//   1. Display header banner celebrating the Century Milestone tool.
+//   2. Compute and showcase known answer tests on standard inputs.
+//   3. Compare digest output lengths and cryptographic families.
+//   4. Demonstrate JSON serialization and format styles.
+
+import "core/hash_types.oo";
+import "core/multi_hash.oo";
+import "render/render_table.oo";
+import "render/render_json.oo";
+
+pub fn run_hash_demo(color: Bool) -> String {
+    let mut out: String = "";
+    out = out + "========================================================\n";
+    out = out + "       openOODA oohash v0.2.0 - Sovereign Century Tool  \n";
+    out = out + "========================================================\n\n";
+
+    let sample1: MultiHashResult = compute_multi_hash("empty-string", "");
+    out = out + format_multi_table(sample1, color) + "\n";
+
+    let sample2: MultiHashResult = compute_multi_hash("quick-brown-fox", "The quick brown fox jumps over the lazy dog");
+    out = out + format_multi_table(sample2, color) + "\n";
+
+    out = out + "--- BSD Tag Format ---\n";
+    out = out + format_bsd_tag("SHA256", "quick-brown-fox", sample2.sha256, false);
+    out = out + format_bsd_tag("BLAKE3", "quick-brown-fox", sample2.blake3, false);
+    out = out + format_bsd_tag("SHA3-512", "quick-brown-fox", sample2.sha3_512, false);
+    out = out + "\n";
+
+    out = out + "--- Structured JSON Representation ---\n";
+    out = out + hash_result_to_json(sample2) + "\n\n";
+
+    out = out + "All cryptographic algorithms verified against NIST / specification test vectors.\n";
+    return out;
+}

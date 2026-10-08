@@ -4,7 +4,7 @@
 # "Removes oohash binary, package installations, and cache."
 #
 # Usage:
-#   curl -fsSL https://openooda-toohash.github.io/oohash/uninstall.sh | bash
+#   curl -fsSL https://openooda-tools.github.io/oohash/uninstall.sh | bash
 #   or: ./uninstall.sh [options]
 #
 # Options:

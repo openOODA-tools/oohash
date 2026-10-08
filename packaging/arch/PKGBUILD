@@ -1,7 +1,7 @@
 # Maintainer: openOODA-tools <ops@openooda.org>
 pkgname=oohash-bin
 _pkgname=oohash
-pkgver=0.1.0
+pkgver=0.2.0
 pkgrel=1
 pkgdesc="Calculates BLAKE3, SHA-256, and SHA3-512 hashes simultaneously in a single pass."
 arch=('x86_64')

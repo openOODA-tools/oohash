@@ -1,0 +1,176 @@
+// # NIST FIPS 202 SHA3-512 Cryptographic Hash Engine
+//
+// Logline: Pure native Keccak-p[1600, 24] sponge permutation and SHA3-512 digest generator.
+//
+// Setup: 64-bit lane state matrix with nonlinear theta, rho, pi, chi, iota permutations.
+//
+// Beats:
+//   1. Define 64-bit circular left rotation and round constant lookups.
+//   2. Implement Keccak-f[1600] 24-round state transformation.
+//   3. Ingest byte sequence, pad with 0x06 delimiter and multi-rate padding.
+//   4. Squeeze 512 bits (64 bytes) and format hexadecimal hash string.
+
+pub fn rotl64(x: Int, n: Int) -> Int {
+    let shift: Int = n % 64;
+    if shift == 0 { return x; }
+    let shift_left: Int = x << shift;
+    let rshift: Int = 64 - shift;
+    let half: Int = (x >> 1) & 9223372036854775807;
+    let shift_right: Int = half >> (rshift - 1);
+    return shift_left | shift_right;
+}
+
+pub fn keccak_rc(r: Int) -> Int {
+    if r == 0 { return 1; } if r == 1 { return 32898; } if r == 2 { return -9223372036854742902; } if r == 3 { return -9223372034707259392; }
+    if r == 4 { return 32907; } if r == 5 { return 2147483649; } if r == 6 { return -9223372034707259263; } if r == 7 { return -9223372036854743031; }
+    if r == 8 { return 138; } if r == 9 { return 136; } if r == 10 { return 2147516425; } if r == 11 { return 2147483658; }
+    if r == 12 { return 2147516555; } if r == 13 { return -9223372036854775669; } if r == 14 { return -9223372036854742903; } if r == 15 { return -9223372036854743037; }
+    if r == 16 { return -9223372036854743038; } if r == 17 { return -9223372036854775680; } if r == 18 { return 32778; } if r == 19 { return -9223372034707292150; }
+    if r == 20 { return -9223372034707259263; } if r == 21 { return -9223372036854742912; } if r == 22 { return 2147483649; } if r == 23 { return -9223372034707259384; }
+    return 0;
+}
+
+pub fn keccak_rot(x: Int, y: Int) -> Int {
+    if y == 0 { if x == 0 { return 0; } if x == 1 { return 1; } if x == 2 { return 62; } if x == 3 { return 28; } if x == 4 { return 27; } }
+    if y == 1 { if x == 0 { return 36; } if x == 1 { return 44; } if x == 2 { return 6; } if x == 3 { return 55; } if x == 4 { return 20; } }
+    if y == 2 { if x == 0 { return 3; } if x == 1 { return 10; } if x == 2 { return 43; } if x == 3 { return 25; } if x == 4 { return 39; } }
+    if y == 3 { if x == 0 { return 41; } if x == 1 { return 45; } if x == 2 { return 15; } if x == 3 { return 21; } if x == 4 { return 8; } }
+    if y == 4 { if x == 0 { return 18; } if x == 1 { return 2; } if x == 2 { return 61; } if x == 3 { return 56; } if x == 4 { return 14; } }
+    return 0;
+}
+
+fn u64_to_hex_le(val: Int) -> String {
+    let hex: String = "0123456789abcdef";
+    let mut s: String = "";
+    let mut cur: Int = val;
+    let mut i: Int = 0;
+    while i < 8 {
+        let b: Int = cur & 255;
+        let hi: Int = (b >> 4) & 15;
+        let lo: Int = b & 15;
+        s = s + str_slice(hex, hi, hi + 1) + str_slice(hex, lo, lo + 1);
+        let half: Int = (cur >> 1) & 9223372036854775807;
+        cur = half >> 7;
+        i = i + 1;
+    }
+    return s;
+}
+
+fn bytes_to_u64_le(bytes: List[Int], offset: Int) -> Int {
+    let b0: Int = list_get(bytes, offset);
+    let b1: Int = list_get(bytes, offset + 1);
+    let b2: Int = list_get(bytes, offset + 2);
+    let b3: Int = list_get(bytes, offset + 3);
+    let b4: Int = list_get(bytes, offset + 4);
+    let b5: Int = list_get(bytes, offset + 5);
+    let b6: Int = list_get(bytes, offset + 6);
+    let b7: Int = list_get(bytes, offset + 7);
+    let low: Int = b0 | (b1 << 8) | (b2 << 16) | (b3 << 24);
+    let high: Int = b4 | (b5 << 8) | (b6 << 16) | (b7 << 24);
+    return low | (high << 32);
+}
+
+pub fn keccak_f1600(mut st: List[Int]) -> List[Int] {
+    let mut round: Int = 0;
+    while round < 24 {
+        let mut c: List[Int] = list_new();
+        let mut x: Int = 0;
+        while x < 5 {
+            let cx: Int = list_get(st, x) ^ list_get(st, x + 5) ^ list_get(st, x + 10) ^ list_get(st, x + 15) ^ list_get(st, x + 20);
+            c = list_push(c, cx);
+            x = x + 1;
+        }
+        let mut d: List[Int] = list_new();
+        x = 0;
+        while x < 5 {
+            let left_idx: Int = (x + 4) % 5;
+            let right_idx: Int = (x + 1) % 5;
+            let dx: Int = list_get(c, left_idx) ^ rotl64(list_get(c, right_idx), 1);
+            d = list_push(d, dx);
+            x = x + 1;
+        }
+        let mut st_theta: List[Int] = list_new();
+        let mut idx: Int = 0;
+        while idx < 25 {
+            let xi: Int = idx % 5;
+            st_theta = list_push(st_theta, list_get(st, idx) ^ list_get(d, xi));
+            idx = idx + 1;
+        }
+        let mut b: List[Int] = list_new();
+        let mut b_init: Int = 0;
+        while b_init < 25 { b = list_push(b, 0); b_init = b_init + 1; }
+        let mut y: Int = 0;
+        while y < 5 {
+            x = 0;
+            while x < 5 {
+                let rot_val: Int = keccak_rot(x, y);
+                let lane_val: Int = rotl64(list_get(st_theta, x + (y * 5)), rot_val);
+                let dest_x: Int = y;
+                let dest_y: Int = ((2 * x) + (3 * y)) % 5;
+                b = list_set(b, dest_x + (dest_y * 5), lane_val);
+                x = x + 1;
+            }
+            y = y + 1;
+        }
+        let mut st_next: List[Int] = list_new();
+        y = 0;
+        while y < 5 {
+            x = 0;
+            while x < 5 {
+                let b_cur: Int = list_get(b, x + (y * 5));
+                let b_x1: Int = list_get(b, ((x + 1) % 5) + (y * 5));
+                let b_x2: Int = list_get(b, ((x + 2) % 5) + (y * 5));
+                let lane_chi: Int = b_cur ^ ((b_x1 ^ -1) & b_x2);
+                st_next = list_push(st_next, lane_chi);
+                x = x + 1;
+            }
+            y = y + 1;
+        }
+        let st0: Int = list_get(st_next, 0) ^ keccak_rc(round);
+        st = list_set(st_next, 0, st0);
+        round = round + 1;
+    }
+    return st;
+}
+
+pub fn sha3_512_hash_string(msg: String) -> String {
+    let n: Int = bytes_len(msg);
+    let rate: Int = 72;
+    let mut padded: List[Int] = bytes_new();
+    let mut i: Int = 0;
+    while i < n {
+        padded = list_push(padded, byte_at(msg, i));
+        i = i + 1;
+    }
+    padded = list_push(padded, 6);
+    while (list_len(padded) % rate) != (rate - 1) {
+        padded = list_push(padded, 0);
+    }
+    padded = list_push(padded, 128);
+
+    let mut st: List[Int] = list_new();
+    let mut init_idx: Int = 0;
+    while init_idx < 25 { st = list_push(st, 0); init_idx = init_idx + 1; }
+
+    let total_bytes: Int = list_len(padded);
+    let mut block_start: Int = 0;
+    while block_start < total_bytes {
+        let mut lane_idx: Int = 0;
+        while lane_idx < (rate / 8) {
+            let lane_u64: Int = bytes_to_u64_le(padded, block_start + (lane_idx * 8));
+            let cur_val: Int = list_get(st, lane_idx);
+            st = list_set(st, lane_idx, cur_val ^ lane_u64);
+            lane_idx = lane_idx + 1;
+        }
+        st = keccak_f1600(st);
+        block_start = block_start + rate;
+    }
+
+    let mut digest: String = "";
+    let mut out_lane: Int = 0;
+    while out_lane < 8 {
+        digest = digest + u64_to_hex_le(list_get(st, out_lane));
+        out_lane = out_lane + 1;
+    }
+    return digest;
+}

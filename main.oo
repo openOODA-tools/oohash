@@ -1,52 +1,149 @@
-// # oohash Main Entry Point
+// # oohash Main Entry Point - Multi-Algorithm Cryptographic Hasher
 //
-// Logline: Calculates BLAKE3, SHA-256, and SHA3-512 hashes simultaneously in a single pass.
+// Logline: Sovereign simultaneous BLAKE3, SHA-256, and SHA3-512 cryptographic calculator.
 //
-// Setup: Demands explicit capability tokens and standard argument list.
+// Setup: Demands FsReadCap, ProcessCap, EnvCap tokens with zero ambient authority.
 //
 // Beats:
-//   1. Parse command-line options and dispatch --help, --version, or --mcp.
-//   2. Execute capability-bounded oohash operations.
-//   3. Format and output structured results to standard output.
+//   1. Dispatch --help, --version, --test, --demo, and --mcp operational modes.
+//   2. Validate manifest files and report cryptographic integrity status.
+//   3. Compute simultaneous multi-hash digests on filesystem paths and streams.
+//   4. Emit structured JSON, BSD-tag, or GNU formatted digest representations.
 
-fn render_help() -> String {
-    return "oohash 0.1.0 (openOODA sovereign data & streaming)\n"
-        + "usage: oohash [options] [ARGUMENTS]...\n\n"
-        + "Calculates BLAKE3, SHA-256, and SHA3-512 hashes simultaneously in a single pass.\n\n"
-        + "Options:\n"
-        + "  -h, --help           display this help and exit\n"
-        + "  -v, --version        output version information and exit\n"
-        + "      --json           output formatted as JSON Lines\n"
-        + "      --color <WHEN>   colorize output: auto, always, never [default: auto]\n"
-        + "      --theme <NAME>   override active oote palette\n"
-        + "      --mcp            run as Model Context Protocol stdio server\n";
-}
+import "core/hash_types.oo";
+import "core/multi_hash.oo";
+import "render/render_table.oo";
+import "render/render_json.oo";
+import "render/render_demo.oo";
+import "ipc/cli_options.oo";
+import "ipc/mcp_server.oo";
+import "anchor.oo";
 
-fn render_version() -> String {
-    return "oohash 0.1.0 (openOODA sovereign data & streaming)\n";
-}
-
-fn main(args: List[String]) -> Int {
-    let num_args: Int = list_len(args);
+fn check_manifest_file(fs: &FsReadCap, path: String, json_mode: Bool, color: Bool) -> Int {
+    let r: Result[String, String] = read_file(fs, path);
+    if !r.is_ok() {
+        println("oohash: cannot read manifest file " + path);
+        return 1;
+    }
+    let content: String = match r { Ok(s) => s, Err(_) => "" };
+    let lines: List[String] = str_split(content, "\n");
+    let n: Int = list_len(lines);
+    let mut failures: Int = 0;
     let mut i: Int = 0;
 
-    while i < num_args {
-        let arg: String = list_get(args, i);
-        if arg == "-h" || arg == "--help" {
-            print(render_help());
-            return 0;
+    while i < n {
+        let line: String = str_trim(list_get(lines, i));
+        if chars_len(line) > 0 && !str_starts_with(line, "#") {
+            let rec: HashCheckRecord = parse_check_line(line);
+            let f_res: Result[MultiHashResult, String] = compute_file_multi_hash(fs, rec.file_path);
+            if !f_res.is_ok() {
+                println(rec.file_path + ": FAILED (unreadable)");
+                failures = failures + 1;
+            } else {
+                let actual: MultiHashResult = match f_res { Ok(res) => res, Err(_) => compute_multi_hash(rec.file_path, "") };
+                let verified: HashCheckRecord = verify_hash_record(rec, actual);
+                if !verified.passed {
+                    failures = failures + 1;
+                }
+                if json_mode {
+                    println(check_record_to_json(verified));
+                } else {
+                    println(format_check_status(verified, color));
+                }
+            }
         }
-        if arg == "-v" || arg == "--version" {
-            print(render_version());
-            return 0;
+        i = i + 1;
+    }
+    return failures;
+}
+
+pub fn main(
+    fs: &FsReadCap,
+    _proc_cap: &ProcessCap,
+    _env: &EnvCap,
+    args: List[String]
+) -> Result[Int, String] {
+    let opts: CliParsedOptions = parse_cli_args(args);
+
+    if opts.show_help {
+        print(render_cli_help());
+        return Ok(0);
+    }
+    if opts.show_version {
+        println("oohash 0.2.0 (openOODA sovereign multi-algorithm cryptographic digest)");
+        return Ok(0);
+    }
+    if opts.test_mode {
+        if verify_all() {
+            println("OK: all tests passed");
+            return Ok(0);
         }
-        if arg == "--mcp" {
-            print("{\"jsonrpc\":\"2.0\",\"result\":{\"status\":\"ready\",\"tool\":\"oohash\"}}\n");
-            return 0;
+        println("FAIL: verification error");
+        return Ok(1);
+    }
+    if opts.demo_mode {
+        print(run_hash_demo(!opts.no_color));
+        return Ok(0);
+    }
+    if opts.mcp_mode {
+        run_mcp_server(fs);
+        return Ok(0);
+    }
+
+    let color: Bool = !opts.no_color;
+    if chars_len(opts.check_file) > 0 {
+        let failures: Int = check_manifest_file(fs, opts.check_file, opts.json_mode, color);
+        if failures > 0 {
+            return Ok(1);
+        }
+        return Ok(0);
+    }
+
+    let files_cnt: Int = list_len(opts.files);
+    if files_cnt == 0 {
+        let sample: MultiHashResult = compute_multi_hash("-", "");
+        if opts.json_mode {
+            println(hash_result_to_json(sample));
+        } else if opts.raw_mode {
+            println(digest_for_algo(sample, opts.algorithm));
+        } else if opts.algorithm == "all" {
+            print(format_multi_table(sample, color));
+        } else {
+            let digest: String = digest_for_algo(sample, opts.algorithm);
+            if opts.tag_style {
+                print(format_bsd_tag(opts.algorithm, "-", digest, opts.zero_delim));
+            } else {
+                print(format_gnu_line(digest, "-", opts.zero_delim));
+            }
+        }
+        return Ok(0);
+    }
+
+    let mut i: Int = 0;
+    while i < files_cnt {
+        let path: String = list_get(opts.files, i);
+        let f_res: Result[MultiHashResult, String] = compute_file_multi_hash(fs, path);
+        if !f_res.is_ok() {
+            println("oohash: " + path + ": No such file or unreadable");
+        } else {
+            let res: MultiHashResult = match f_res { Ok(r) => r, Err(_) => compute_multi_hash(path, "") };
+            if opts.json_mode {
+                println(hash_result_to_json(res));
+            } else if opts.raw_mode {
+                println(digest_for_algo(res, opts.algorithm));
+            } else if opts.algorithm == "all" {
+                print(format_multi_table(res, color));
+            } else {
+                let digest: String = digest_for_algo(res, opts.algorithm);
+                if opts.tag_style {
+                    print(format_bsd_tag(opts.algorithm, path, digest, opts.zero_delim));
+                } else {
+                    print(format_gnu_line(digest, path, opts.zero_delim));
+                }
+            }
         }
         i = i + 1;
     }
 
-    print("oohash: sovereign capability-bounded utility ready\n");
-    return 0;
+    return Ok(0);
 }

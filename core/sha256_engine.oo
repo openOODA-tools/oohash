@@ -1,0 +1,179 @@
+// # NIST FIPS 180-4 SHA-256 Cryptographic Hash Engine
+//
+// Logline: Pure native implementation of the standard 256-bit secure hash algorithm.
+//
+// Setup: 32-bit big-endian word schedules and round constants without external dependencies.
+//
+// Beats:
+//   1. Define standard NIST SHA-256 round constant lookup table.
+//   2. Implement 32-bit right-rotation and bitwise nonlinear mixing operators.
+//   3. Ingest and pad byte sequences with big-endian length bit encoding.
+//   4. Execute 64 compression rounds per 512-bit block and emit hex digest.
+
+pub fn sha256_rotr(x: Int, n: Int) -> Int {
+    let right: Int = (x >> n) & ((1 << (32 - n)) - 1);
+    let left: Int = (x << (32 - n)) & 4294967295;
+    return (right | left) & 4294967295;
+}
+
+fn hex_nibble(n: Int) -> String {
+    let v: Int = n % 16;
+    if v == 0 { return "0"; } if v == 1 { return "1"; }
+    if v == 2 { return "2"; } if v == 3 { return "3"; }
+    if v == 4 { return "4"; } if v == 5 { return "5"; }
+    if v == 6 { return "6"; } if v == 7 { return "7"; }
+    if v == 8 { return "8"; } if v == 9 { return "9"; }
+    if v == 10 { return "a"; } if v == 11 { return "b"; }
+    if v == 12 { return "c"; } if v == 13 { return "d"; }
+    if v == 14 { return "e"; } return "f";
+}
+
+fn word_to_hex(w: Int) -> String {
+    let mut s: String = "";
+    let mut cur: Int = w;
+    let mut i: Int = 0;
+    while i < 8 {
+        let nib: Int = cur % 16;
+        s = hex_nibble(nib) + s;
+        cur = cur / 16;
+        i = i + 1;
+    }
+    return s;
+}
+
+pub fn sha256_k(t: Int) -> Int {
+    if t == 0 { return 1116352408; } if t == 1 { return 1899447441; } if t == 2 { return 3049323471; } if t == 3 { return 3921009573; }
+    if t == 4 { return 961987163; } if t == 5 { return 1508970993; } if t == 6 { return 2453635748; } if t == 7 { return 2870763221; }
+    if t == 8 { return 3624381080; } if t == 9 { return 310598401; } if t == 10 { return 607225278; } if t == 11 { return 1426881987; }
+    if t == 12 { return 1925078388; } if t == 13 { return 2162078206; } if t == 14 { return 2614888103; } if t == 15 { return 3248222580; }
+    if t == 16 { return 3835390401; } if t == 17 { return 4022224774; } if t == 18 { return 264347078; } if t == 19 { return 604807628; }
+    if t == 20 { return 770255983; } if t == 21 { return 1249150122; } if t == 22 { return 1555081692; } if t == 23 { return 1996064986; }
+    if t == 24 { return 2554220882; } if t == 25 { return 2821834349; } if t == 26 { return 2952996808; } if t == 27 { return 3210313671; }
+    if t == 28 { return 3336571891; } if t == 29 { return 3584528711; } if t == 30 { return 113926993; } if t == 31 { return 338241895; }
+    if t == 32 { return 666307205; } if t == 33 { return 773529912; } if t == 34 { return 1294757372; } if t == 35 { return 1396182291; }
+    if t == 36 { return 1695183700; } if t == 37 { return 1986661051; } if t == 38 { return 2177026350; } if t == 39 { return 2456956037; }
+    if t == 40 { return 2730485921; } if t == 41 { return 2820302411; } if t == 42 { return 3259730800; } if t == 43 { return 3345764771; }
+    if t == 44 { return 3516065817; } if t == 45 { return 3600352804; } if t == 46 { return 4094571909; } if t == 47 { return 275423344; }
+    if t == 48 { return 430227734; } if t == 49 { return 506948616; } if t == 50 { return 659060556; } if t == 51 { return 883997877; }
+    if t == 52 { return 958139571; } if t == 53 { return 1322822218; } if t == 54 { return 1537002063; } if t == 55 { return 1747873779; }
+    if t == 56 { return 1955562222; } if t == 57 { return 2024104815; } if t == 58 { return 2227730452; } if t == 59 { return 2361852424; }
+    if t == 60 { return 2428436474; } if t == 61 { return 2756734187; } if t == 62 { return 3204031479; } if t == 63 { return 3329325298; }
+    return 0;
+}
+
+pub fn sha256_hash_string(msg: String) -> String {
+    let n: Int = bytes_len(msg);
+    let mut padded: List[Int] = bytes_new();
+    let mut i: Int = 0;
+    while i < n {
+        padded = list_push(padded, byte_at(msg, i));
+        i = i + 1;
+    }
+    padded = list_push(padded, 128);
+    while (list_len(padded) % 64) != 56 {
+        padded = list_push(padded, 0);
+    }
+    let total_bits: Int = n * 8;
+    let b0: Int = 0;
+    let b1: Int = 0;
+    let b2: Int = 0;
+    let b3: Int = 0;
+    let b4: Int = (total_bits >> 24) & 255;
+    let b5: Int = (total_bits >> 16) & 255;
+    let b6: Int = (total_bits >> 8) & 255;
+    let b7: Int = total_bits & 255;
+    padded = list_push(padded, b0);
+    padded = list_push(padded, b1);
+    padded = list_push(padded, b2);
+    padded = list_push(padded, b3);
+    padded = list_push(padded, b4);
+    padded = list_push(padded, b5);
+    padded = list_push(padded, b6);
+    padded = list_push(padded, b7);
+
+    let mut h0: Int = 1779033703;
+    let mut h1: Int = 3144134277;
+    let mut h2: Int = 1013904242;
+    let mut h3: Int = 2773480762;
+    let mut h4: Int = 1359893119;
+    let mut h5: Int = 2600822924;
+    let mut h6: Int = 528734635;
+    let mut h7: Int = 1541459225;
+
+    let total_bytes: Int = list_len(padded);
+    let num_blocks: Int = total_bytes / 64;
+    let mut block_idx: Int = 0;
+
+    while block_idx < num_blocks {
+        let base: Int = block_idx * 64;
+        let mut w: List[Int] = list_new();
+        let mut t: Int = 0;
+        while t < 16 {
+            let offset: Int = base + (t * 4);
+            let byte0: Int = list_get(padded, offset);
+            let byte1: Int = list_get(padded, offset + 1);
+            let byte2: Int = list_get(padded, offset + 2);
+            let byte3: Int = list_get(padded, offset + 3);
+            let word: Int = (byte0 << 24) | (byte1 << 16) | (byte2 << 8) | byte3;
+            w = list_push(w, word);
+            t = t + 1;
+        }
+        while t < 64 {
+            let w15: Int = list_get(w, t - 15);
+            let s0: Int = sha256_rotr(w15, 7) ^ sha256_rotr(w15, 18) ^ (w15 >> 3);
+            let w2: Int = list_get(w, t - 2);
+            let s1: Int = sha256_rotr(w2, 17) ^ sha256_rotr(w2, 19) ^ (w2 >> 10);
+            let w16: Int = list_get(w, t - 16);
+            let w7: Int = list_get(w, t - 7);
+            let wt: Int = (w16 + s0 + w7 + s1) & 4294967295;
+            w = list_push(w, wt);
+            t = t + 1;
+        }
+
+        let mut a: Int = h0;
+        let mut b: Int = h1;
+        let mut c: Int = h2;
+        let mut d: Int = h3;
+        let mut e: Int = h4;
+        let mut f: Int = h5;
+        let mut g: Int = h6;
+        let mut h: Int = h7;
+
+        let mut round: Int = 0;
+        while round < 64 {
+            let s1: Int = sha256_rotr(e, 6) ^ sha256_rotr(e, 11) ^ sha256_rotr(e, 25);
+            let ch: Int = (e & f) ^ ((4294967295 ^ e) & g);
+            let wt: Int = list_get(w, round);
+            let kt: Int = sha256_k(round);
+            let temp1: Int = (h + s1 + ch + kt + wt) & 4294967295;
+            let s0: Int = sha256_rotr(a, 2) ^ sha256_rotr(a, 13) ^ sha256_rotr(a, 22);
+            let maj: Int = (a & b) ^ (a & c) ^ (b & c);
+            let temp2: Int = (s0 + maj) & 4294967295;
+
+            h = g;
+            g = f;
+            f = e;
+            e = (d + temp1) & 4294967295;
+            d = c;
+            c = b;
+            b = a;
+            a = (temp1 + temp2) & 4294967295;
+
+            round = round + 1;
+        }
+
+        h0 = (h0 + a) & 4294967295;
+        h1 = (h1 + b) & 4294967295;
+        h2 = (h2 + c) & 4294967295;
+        h3 = (h3 + d) & 4294967295;
+        h4 = (h4 + e) & 4294967295;
+        h5 = (h5 + f) & 4294967295;
+        h6 = (h6 + g) & 4294967295;
+        h7 = (h7 + h) & 4294967295;
+
+        block_idx = block_idx + 1;
+    }
+
+    return word_to_hex(h0) + word_to_hex(h1) + word_to_hex(h2) + word_to_hex(h3)
+        + word_to_hex(h4) + word_to_hex(h5) + word_to_hex(h6) + word_to_hex(h7);
+}

@@ -1,0 +1,47 @@
+// # Render Subsystem Verification Anchor
+//
+// Logline: Automated self-tests for multi-hash table formatting and JSON serialization.
+//
+// Setup: Validates output generation across GNU, BSD, table, and JSON formats.
+//
+// Beats:
+//   1. Verify GNU-style single-line hash formatting.
+//   2. Verify BSD-style tagged hash formatting.
+//   3. Verify RFC 8259 JSON serialization for MultiHashResult.
+//   4. Verify demo showcase output generation.
+
+import "core/hash_types.oo";
+import "core/multi_hash.oo";
+import "render/render_table.oo";
+import "render/render_json.oo";
+import "render/render_demo.oo";
+
+pub fn verify_render() -> Bool {
+    let res: MultiHashResult = compute_multi_hash("test.bin", "hello");
+    let gnu: String = format_gnu_line(res.sha256, res.input_name, false);
+    if str_slice(gnu, 0, 10) != str_slice(res.sha256, 0, 10) {
+        return false;
+    }
+
+    let bsd: String = format_bsd_tag("SHA256", "test.bin", res.sha256, false);
+    if str_slice(bsd, 0, 17) != "SHA256 (test.bin)" {
+        return false;
+    }
+
+    let json: String = hash_result_to_json(res);
+    if chars_len(json) < 20 {
+        return false;
+    }
+
+    let tbl: String = format_multi_table(res, false);
+    if chars_len(tbl) < 30 {
+        return false;
+    }
+
+    let demo: String = run_hash_demo(false);
+    if chars_len(demo) < 50 {
+        return false;
+    }
+
+    return true;
+}

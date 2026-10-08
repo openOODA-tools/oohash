@@ -1,5 +1,5 @@
 Name:           oohash
-Version:        0.1.0
+Version:        0.2.0
 Release:        1%{?dist}
 Summary:        Calculates BLAKE3, SHA-256, and SHA3-512 hashes simultaneously in a single pass.
 License:        ASL 2.0

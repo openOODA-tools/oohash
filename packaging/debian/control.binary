@@ -1,0 +1,9 @@
+Package: oohash
+Version: 0.2.0-1
+Section: utils
+Priority: optional
+Architecture: amd64
+Maintainer: openOODA-tools <ops@openooda.org>
+Description: Calculates BLAKE3, SHA-256, and SHA3-512 hashes simultaneously in a single pass.
+ Capability-bounded openOODA utility with zero ambient authority,
+ oote theme palettes, and native Model Context Protocol (MCP) surface.

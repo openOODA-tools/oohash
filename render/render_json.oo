@@ -1,0 +1,55 @@
+// # RFC 8259 JSON Serializer for Cryptographic Hashes
+//
+// Logline: Formats multi-digest results and check verification manifests into standard JSON.
+//
+// Setup: String escapers and field formatters producing strict RFC 8259 payloads.
+//
+// Beats:
+//   1. Escape special JSON control characters and quotation marks.
+//   2. Serialize MultiHashResult into structured JSON object.
+//   3. Serialize HashCheckRecord into structured verification JSON object.
+//   4. Serialize list of multi-hash results into JSON array.
+
+import "core/hash_types.oo";
+
+pub fn json_escape_hash_str(s: String) -> String {
+    let n: Int = chars_len(s);
+    let mut out: String = "";
+    let mut i: Int = 0;
+    while i < n {
+        let ch: String = char_at(s, i);
+        if ch == "\\" {
+            out = out + "\\\\";
+        } else if ch == "\"" {
+            out = out + "\\\"";
+        } else if ch == "\n" {
+            out = out + "\\n";
+        } else if ch == "\t" {
+            out = out + "\\t";
+        } else if ch == "\r" {
+            out = out + "\\r";
+        } else {
+            out = out + ch;
+        }
+        i = i + 1;
+    }
+    return out;
+}
+
+pub fn hash_result_to_json(res: MultiHashResult) -> String {
+    return "{\"file\":\"" + json_escape_hash_str(res.input_name) + "\","
+        + "\"bytes\":" + to_string(res.bytes_count) + ","
+        + "\"blake3\":\"" + res.blake3 + "\","
+        + "\"sha256\":\"" + res.sha256 + "\","
+        + "\"sha3_512\":\"" + res.sha3_512 + "\"}";
+}
+
+pub fn check_record_to_json(rec: HashCheckRecord) -> String {
+    let passed_str: String = if rec.passed { "true" } else { "false" };
+    return "{\"file\":\"" + json_escape_hash_str(rec.file_path) + "\","
+        + "\"algo\":\"" + rec.algo + "\","
+        + "\"expected\":\"" + rec.expected + "\","
+        + "\"actual\":\"" + rec.actual + "\","
+        + "\"status\":\"" + rec.status + "\","
+        + "\"passed\":" + passed_str + "}";
+}

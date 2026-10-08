@@ -1,0 +1,106 @@
+// # Command Line Interface Argument Parser
+//
+// Logline: Decodes CLI flags into structured configuration records.
+//
+// Setup: Parses POSIX flags for algorithms, formats, check manifests, and MCP server.
+//
+// Beats:
+//   1. Declare CliParsedOptions container structure.
+//   2. Provide constructor helper for default options.
+//   3. Ingest CLI tokens and map flags to options fields.
+//   4. Format standard POSIX help usage documentation.
+
+pub type CliParsedOptions = struct {
+    algorithm: String,
+    files: List[String],
+    tag_style: Bool,
+    raw_mode: Bool,
+    check_file: String,
+    zero_delim: Bool,
+    json_mode: Bool,
+    demo_mode: Bool,
+    no_color: Bool,
+    test_mode: Bool,
+    mcp_mode: Bool,
+    show_help: Bool,
+    show_version: Bool
+};
+
+pub fn default_cli_options() -> CliParsedOptions {
+    return CliParsedOptions {
+        algorithm: "all",
+        files: list_new(),
+        tag_style: false,
+        raw_mode: false,
+        check_file: "",
+        zero_delim: false,
+        json_mode: false,
+        demo_mode: false,
+        no_color: false,
+        test_mode: false,
+        mcp_mode: false,
+        show_help: false,
+        show_version: false
+    };
+}
+
+pub fn parse_cli_args(args: List[String]) -> CliParsedOptions {
+    let mut opts: CliParsedOptions = default_cli_options();
+    let n: Int = list_len(args);
+    let mut i: Int = 0;
+
+    while i < n {
+        let arg: String = list_get(args, i);
+        if arg == "-h" || arg == "--help" {
+            opts.show_help = true;
+        } else if arg == "-v" || arg == "--version" {
+            opts.show_version = true;
+        } else if arg == "--tag" {
+            opts.tag_style = true;
+        } else if arg == "-r" || arg == "--raw" {
+            opts.raw_mode = true;
+        } else if arg == "-z" || arg == "--zero" {
+            opts.zero_delim = true;
+        } else if arg == "-j" || arg == "--json" {
+            opts.json_mode = true;
+        } else if arg == "-D" || arg == "--demo" {
+            opts.demo_mode = true;
+        } else if arg == "--no-color" {
+            opts.no_color = true;
+        } else if arg == "--test" {
+            opts.test_mode = true;
+        } else if arg == "--mcp" {
+            opts.mcp_mode = true;
+        } else if (arg == "-a" || arg == "--algorithm" || arg == "--algo") && (i + 1) < n {
+            i = i + 1;
+            opts.algorithm = list_get(args, i);
+        } else if (arg == "-c" || arg == "--check") && (i + 1) < n {
+            i = i + 1;
+            opts.check_file = list_get(args, i);
+        } else if !str_starts_with(arg, "-") {
+            opts.files = list_push(opts.files, arg);
+        }
+        i = i + 1;
+    }
+
+    return opts;
+}
+
+pub fn render_cli_help() -> String {
+    let mut out: String = "Usage: oohash [OPTIONS] [FILE...]\n\n";
+    out = out + "Simultaneous multi-algorithm cryptographic hash calculator and integrity validator.\n\n";
+    out = out + "Options:\n";
+    out = out + "  -a, --algo <NAME>   Select algorithm: blake3, sha256, sha3_512, all (default: all)\n";
+    out = out + "      --tag           Create BSD-style checksum output\n";
+    out = out + "  -r, --raw           Print only raw hexadecimal digest without filename\n";
+    out = out + "  -c, --check <FILE>  Read checksums from FILE and check them\n";
+    out = out + "  -z, --zero          End each output line with NUL, not newline\n";
+    out = out + "  -j, --json          Emit RFC 8259 structured JSON output\n";
+    out = out + "  -D, --demo          Run interactive multi-algorithm cryptographic showcase\n";
+    out = out + "      --no-color      Disable ANSI color sequences\n";
+    out = out + "      --test          Run automated internal self-test suite\n";
+    out = out + "      --mcp           Launch streaming JSON-RPC 2.0 stdio server\n";
+    out = out + "  -h, --help          Display this help and exit\n";
+    out = out + "  -v, --version       Display version information and exit\n";
+    return out;
+}

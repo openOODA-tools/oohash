@@ -1,0 +1,74 @@
+// # Multi-Algorithm Cryptographic Evaluator
+//
+// Logline: Coordinates simultaneous multi-hash evaluations and manifest verifications.
+//
+// Setup: Single-pass pipeline computing BLAKE3, SHA-256, and SHA3-512 digests.
+//
+// Beats:
+//   1. Evaluate simultaneous multi-hash digests on in-memory string content.
+//   2. Read filesystem contents under capability token and compute file digests.
+//   3. Extract algorithm-specific digest strings matching requested format flags.
+//   4. Parse checksum manifest records and verify computed digests against expected.
+
+import "core/hash_types.oo";
+import "core/blake3_engine.oo";
+import "core/sha256_engine.oo";
+import "core/sha3_engine.oo";
+
+pub fn compute_multi_hash(name: String, content: String) -> MultiHashResult {
+    let b3: String = blake3_hash_string(content);
+    let s256: String = sha256_hash_string(content);
+    let s3: String = sha3_512_hash_string(content);
+    let nbytes: Int = bytes_len(content);
+    return make_multi_hash_result(name, b3, s256, s3, nbytes);
+}
+
+pub fn compute_file_multi_hash(fs: &FsReadCap, path: String) -> Result[MultiHashResult, String] {
+    let r: Result[String, String] = read_file(fs, path);
+    if !r.is_ok() {
+        return Err("unable to read file: " + path);
+    }
+    let content: String = match r { Ok(s) => s, Err(_) => "" };
+    return Ok(compute_multi_hash(path, content));
+}
+
+pub fn digest_for_algo(res: MultiHashResult, algo: String) -> String {
+    let low: String = str_trim(algo);
+    if low == "sha256" || low == "sha-256" || low == "256" {
+        return res.sha256;
+    }
+    if low == "sha3" || low == "sha3-512" || low == "sha3_512" || low == "512" {
+        return res.sha3_512;
+    }
+    return res.blake3;
+}
+
+pub fn parse_check_line(line: String) -> HashCheckRecord {
+    let trimmed: String = str_trim(line);
+    let n: Int = chars_len(trimmed);
+    let mut i: Int = 0;
+    while i < n && char_at(trimmed, i) != " " && char_at(trimmed, i) != "\t" {
+        i = i + 1;
+    }
+    let exp_hash: String = str_slice(trimmed, 0, i);
+    while i < n && (char_at(trimmed, i) == " " || char_at(trimmed, i) == "\t" || char_at(trimmed, i) == "*") {
+        i = i + 1;
+    }
+    let file_path: String = str_slice(trimmed, i, n);
+    let hash_len: Int = chars_len(exp_hash);
+    let mut detected_algo: String = "blake3";
+    if hash_len == 64 {
+        detected_algo = "sha256";
+    }
+    if hash_len == 128 {
+        detected_algo = "sha3_512";
+    }
+    return make_hash_check_record(file_path, detected_algo, exp_hash, "", "PENDING", false);
+}
+
+pub fn verify_hash_record(record: HashCheckRecord, actual: MultiHashResult) -> HashCheckRecord {
+    let comp: String = digest_for_algo(actual, record.algo);
+    let is_match: Bool = comp == record.expected;
+    let status_str: String = if is_match { "OK" } else { "FAILED" };
+    return make_hash_check_record(record.file_path, record.algo, record.expected, comp, status_str, is_match);
+}
